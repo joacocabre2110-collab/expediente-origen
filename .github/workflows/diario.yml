@@ -107,9 +107,9 @@ jobs:
           for modo in real dry-run; do
             base="datos_corrida/$modo"
             if [ -d "estado/$base" ]; then
-              find "estado/$base" -maxdepth 1 -type f \( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.json' -o -name '*.txt' \) -print0 | xargs -0 -r git -C estado add -f --
-              find "estado/$base" -mindepth 2 -type f -name 'estado.json' -print0 | xargs -0 -r git -C estado add -f --
-              find "estado/$base/alerts" -type f -name '*.txt' -print0 2>/dev/null | xargs -0 -r git -C estado add -f --
+              (cd estado && find "$base" -maxdepth 1 -type f \( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.json' -o -name '*.txt' \) -print0 | xargs -0 -r git add -f --)
+              (cd estado && find "$base" -mindepth 2 -type f -name 'estado.json' -print0 | xargs -0 -r git add -f --)
+              (cd estado && find "$base/alerts" -type f -name '*.txt' -print0 2>/dev/null | xargs -0 -r git add -f --) || true
             fi
           done
           if ! git -C estado diff --cached --quiet; then
