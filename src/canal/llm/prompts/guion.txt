@@ -1,0 +1,3 @@
+Tema: {tema}. Formato: {tipo}. Usá exclusivamente esta evidencia de Wikipedia:
+{fragmentos}
+No uses conocimiento propio. Separá evidencia, hipótesis y leyenda; atribuí hipótesis y leyendas como tales. Toda afirmación fáctica concreta del guion debe aparecer en afirmaciones como objeto {"texto":"...","citas":["F1"]}; cita uno o más ids existentes que la respalden. No escribas afirmaciones fácticas sin una entrada respaldada. Para short: texto de aproximadamente 75-110 palabras. Para largo: 1200-2000 palabras con secciones y progresión documental. JSON exacto: texto, gancho (8-180), intro (8-500), estructura (cronologica, misterio, causa_consecuencia, comparacion, investigacion o giro_final), pilar, afirmaciones (lista de {"texto":string,"citas":lista de ids}).

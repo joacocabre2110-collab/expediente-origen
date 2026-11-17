@@ -1,0 +1,1 @@
+Creá metadatos para el Expediente {tema} ({tipo}), basados solo en este guion: {guion}. No agregues afirmaciones nuevas. JSON exacto: titulo (5-100 caracteres), descripcion (40-3000 caracteres), etiquetas (3-20 strings de hasta 50 caracteres).

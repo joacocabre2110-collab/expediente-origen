@@ -1,0 +1,11 @@
+Convertí el guion en un plan visual para un video {tipo}. Devolvé exclusivamente JSON con forma {"segmentos":[{"oraciones":[1,2],"escena":{"tipo":"...","datos":{}},"impacto":false}]}.
+Cada segmento debe indicar en "oraciones" uno o dos índices consecutivos de la lista numerada. Cubrí todas las oraciones en orden, sin repetir ni saltear índices. No incluyas el texto de las oraciones: el código lo reconstruye literalmente. Si hay imágenes, agregá "imagen": n (índice I1 = 1, etc.) o null en cada segmento. Usá una imagen en casi todos los segmentos; solo dejá sin imagen un beat de número o pregunta puro. Nunca uses la misma imagen en segmentos consecutivos. En portada usá siempre la más llamativa. Asociá una imagen solo cuando su título sea pertinente al contenido literal de la oración asignada. Si no hay una imagen específica para el segmento, podés reutilizar una imagen de otro segmento no consecutivo, con otro modo/zoom.
+La primera escena debe ser portada y la última cierre. En short, la portada es un gancho visual. No repitas un tipo más de dos veces seguidas. Usá únicamente hechos explícitos en las oraciones asignadas; no inventes datos, cifras, fechas ni promesas. Los textos de pantalla deben ser breves y derivarse de esas oraciones.
+Tipos y datos exactos: portada {"expediente":"...","titulo":"...","subtitulo":"..."}; texto_clave {"frase":"..."}; numero {"cifra":"...","leyenda":"..."}; pregunta {"pregunta":"..."}; linea_tiempo {"hitos":[{"texto":"...","fecha":"..."},{"texto":"...","fecha":"..."},{"texto":"...","fecha":"..."}]}; pistas {"evidencias":[{"texto":"..."},{"texto":"..."}]}; cierre {"frase":"...","adelanto":"..."}.
+Para portada expediente debe ser corto y título/subtítulo respetar el contenido citado. Para linea_tiempo usá 3 a 5 hitos, solo si las oraciones asignadas proporcionan esos hechos. Para pistas usá 2 a 5 evidencias explícitas. Cada dato debe cumplir los límites de render: expediente 16, titulo 160, subtitulo 180, frase/pregunta 100/180, cifra 18, leyenda 180, elementos 180 caracteres. Cierre y apertura deben usar solo el guion y no crear adelantos no mencionados.
+Gancho: {gancho}
+Oraciones numeradas del guion:
+{guion}
+Imágenes disponibles:
+{imagenes}
+Citas y afirmaciones verificadas (referencia; no agregues hechos externos): {citas}

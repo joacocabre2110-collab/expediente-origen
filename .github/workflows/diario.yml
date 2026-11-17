@@ -1,0 +1,126 @@
+name: Ciclo diario del canal
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Prueba local sin llamadas reales ni publicación"
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: canal-diario
+  cancel-in-progress: false
+
+jobs:
+  diario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      - name: Checkout estado privado
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.STATE_REPO }}
+          token: ${{ secrets.STATE_REPO_TOKEN }}
+          path: estado
+          persist-credentials: true
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-inter fonts-gfs-baskerville
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 playwright requests
+          playwright install --with-deps chromium
+      - name: Restaurar configuración y credenciales
+        env:
+          CONFIG_TOML: ${{ secrets.CONFIG_TOML }}
+          CLIENT_SECRET_JSON: ${{ secrets.CLIENT_SECRET_JSON }}
+          TOKEN_JSON: ${{ secrets.TOKEN_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SPEKO_API_KEY: ${{ secrets.SPEKO_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$CONFIG_TOML" > config.toml
+          printf '%s' "$CLIENT_SECRET_JSON" > secrets/client_secret.json
+          printf '%s' "$TOKEN_JSON" > secrets/token.json
+          printf '%s' "$GEMINI_API_KEY" > secrets/gemini_api_key.txt
+          printf '%s' "$SPEKO_API_KEY" > secrets/speko_api_key.txt
+          printf '%s' "$GMAIL_APP_PASSWORD" > secrets/smtp_password.txt
+          printf '[smtp]\nhost = smtp.gmail.com\npuerto = 587\nusuario = %s\nremitente = %s\n' "$GMAIL_ADDRESS" "$GMAIL_ADDRESS" > secrets/smtp.ini
+          chmod 600 secrets/* config.toml
+          python - <<'PY'
+          import tomllib
+          with open('config.toml', 'rb') as archivo:
+              config = tomllib.load(archivo)
+          if config.get('publish_public_enabled') is not False:
+              raise SystemExit('CONFIG_TOML debe declarar publish_public_enabled = false')
+          PY
+      - name: Ejecutar ciclo privado
+        env:
+          CANAL_ASSETS_DIR: ${{ github.workspace }}/estado/assets/original/canal_youtube
+          CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || 'real' }}
+          CANAL_SECRETS_DIR: ${{ github.workspace }}/secrets
+          CANAL_CONFIG_PATH: ${{ github.workspace }}/config.toml
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python scripts/diario.py --dry-run
+          else
+            python scripts/diario.py
+          fi
+      - name: Alerta por correo si falla
+        if: failure()
+        env:
+          ALERT_TO: ${{ secrets.ALERT_EMAIL }}
+          CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/real
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          import os
+          from canal.alerts.smtp import CanalSMTP
+          from canal.alerts.notifier import CanalArchivo
+          try:
+              CanalSMTP('secrets/smtp.ini', password_file='secrets/smtp_password.txt', fallback=CanalArchivo(os.path.join(os.environ['CANAL_DATOS_DIR'], 'alerts')), retries=1).enviar(
+                  os.environ['ALERT_TO'], 'Falló el ciclo diario del canal',
+                  f"Falló el workflow {os.environ.get('GITHUB_SERVER_URL')}/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}"
+              )
+          except Exception as exc:
+              print(f"No se pudo enviar la alerta SMTP ({type(exc).__name__})")
+          PY
+      - name: Guardar estado privado y limpiar temporales
+        if: always()
+        env:
+          STATE_REPO_TOKEN: ${{ secrets.STATE_REPO_TOKEN }}
+        run: |
+          set -e
+          git -C estado config user.name "github-actions[bot]"
+          git -C estado config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C estado pull --rebase --autostash origin "$(git -C estado branch --show-current)"
+          for modo in real dry-run; do
+            base="datos_corrida/$modo"
+            if [ -d "estado/$base" ]; then
+              find "estado/$base" -maxdepth 1 -type f \( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.json' -o -name '*.txt' \) -print0 | xargs -0 -r git -C estado add -f --
+              find "estado/$base" -mindepth 2 -type f -name 'estado.json' -print0 | xargs -0 -r git -C estado add -f --
+              find "estado/$base/alerts" -type f -name '*.txt' -print0 2>/dev/null | xargs -0 -r git -C estado add -f --
+            fi
+          done
+          if ! git -C estado diff --cached --quiet; then
+            git -C estado commit -m "Actualizar estado del canal"
+            for intento in 1 2 3 4 5; do
+              rama="$(git -C estado branch --show-current)"
+              if git -C estado pull --rebase origin "$rama" && git -C estado push origin "$rama"; then break; fi
+              if [ "$intento" = 5 ]; then exit 1; fi
+              sleep $((intento * 3))
+            done
+          fi
+          find estado/datos_corrida -type f \( -name '*.mp4' -o -name '*.wav' -o -name '*.mp3' -o -name '*.png' \) -delete 2>/dev/null || true

@@ -1,0 +1,32 @@
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.toml
+config.toml
+assets/
+
+.venv/
+
+# Datos y cachés
+*.sqlite
+*.sqlite3
+*.sqlite
+token*.json
+client_secret*.json
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Salidas generadas
+outputs/
+output/
+renders/
+dist/
+build/
+secrets/
+docs_externas/
+datos_corrida/
+.DS_Store

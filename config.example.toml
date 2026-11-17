@@ -1,0 +1,19 @@
+presupuesto_mensual_usd = ""
+email_alertas = ""
+publish_public_enabled = false
+
+[llm]
+guion = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+verificacion = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+metadatos = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+tema = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+escenas = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+
+[narracion]
+proveedor = "elevenlabs"
+modelo = "eleven_v3_conversational"
+voz = "HRUUrQrYM9LfgDbWoMXS"
+clave_path = "secrets/speko_api_key.txt"
+max_caracteres_largo = 20000
+max_caracteres_short = 3000
+pausa_min_s = 0

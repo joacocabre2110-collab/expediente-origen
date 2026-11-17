@@ -1,0 +1,3 @@
+Auditá cada afirmación exclusivamente contra los fragmentos citados; no uses conocimiento propio. Tema {tema}. Afirmaciones declaradas: {afirmaciones}. Texto del guion: {guion}. Fragmentos disponibles:
+{fragmentos}
+Comprueba que cada cita respalda la afirmación. Toda afirmación no respaldada por sus fragmentos, sin citas o con una cita inexistente debe figurar en dudosas. Rechaza la conjetura presentada como hecho. Distingue evidencia, hipótesis y leyenda. JSON exacto: afirmaciones (lista), dudosas (lista), motivos (lista).

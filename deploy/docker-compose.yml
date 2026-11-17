@@ -1,0 +1,32 @@
+services:
+  canal:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: canal-automatico:latest
+    container_name: canal-automatico
+    restart: unless-stopped
+    init: true
+    cpus: 4.0
+    mem_limit: 8g
+    environment:
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+      PYTHONPATH: /app/src
+      CANAL_DATA_DIR: /app/data
+    working_dir: /app
+    command: ["sleep", "infinity"]
+    user: "10001:10001"
+    volumes:
+      - canal_data:/app/data
+      - ./config:/app/config:ro
+      - ../secrets:/app/secrets:ro
+      - ./crontab.txt:/app/crontab.txt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /app/data && test -r /app/crontab.txt"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  canal_data:
