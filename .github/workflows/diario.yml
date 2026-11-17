@@ -1,8 +1,9 @@
 name: Ciclo diario del canal
 
 on:
-  schedule:
-    - cron: '17 */2 * * *'
+  # Horario automático desactivado hasta que el usuario autorice la operación diaria:
+  # schedule:
+  #   - cron: '17 */2 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
