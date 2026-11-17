@@ -10,6 +10,11 @@ on:
         type: boolean
         required: false
         default: true
+      prueba_short:
+        description: "Un solo Short real y privado (tope 0,25 USD), sin ciclo diario"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: canal-diario
@@ -70,11 +75,13 @@ jobs:
       - name: Ejecutar ciclo privado
         env:
           CANAL_ASSETS_DIR: ${{ github.workspace }}/estado/assets/original/canal_youtube
-          CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || 'real' }}
+          CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && !inputs.prueba_short && 'dry-run' || 'real' }}
           CANAL_SECRETS_DIR: ${{ github.workspace }}/secrets
           CANAL_CONFIG_PATH: ${{ github.workspace }}/config.toml
         run: |
-          if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.prueba_short }}" = "true" ]; then
+            PYTHONPATH=src python -u scripts/corrida_privada.py --tipo short --max-costo-usd 0.25 --datos "$CANAL_DATOS_DIR"
+          elif [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             python scripts/diario.py --dry-run
           else
             python scripts/diario.py
