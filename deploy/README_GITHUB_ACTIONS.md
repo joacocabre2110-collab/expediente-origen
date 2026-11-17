@@ -10,7 +10,7 @@ El repositorio público contiene solo código. Los recursos creativos y los dato
 
 ## 2. Token de acceso al repo privado
 
-En GitHub vaya a **Settings → Developer settings → Fine-grained personal access tokens** y cree un token limitado al propietario y al repo privado de estado. Conceda únicamente **Repository permissions → Contents: Read and write**. Cárguelo como `STATE_REPO_TOKEN` en **Settings → Secrets and variables → Actions → New repository secret**. El repo público debe usar el token solo para clonar y actualizar el repo privado.
+Se usa una **clave de despliegue (deploy key)** SSH con permiso de escritura, registrada solo en el repo privado de estado y guardada como el secreto `STATE_DEPLOY_KEY`. No hace falta un token personal.
 
 ## 3. Secrets requeridos
 
@@ -19,7 +19,7 @@ Agregue estos Actions Secrets al repositorio público:
 | Nombre | Contenido esperado |
 | --- | --- |
 | `STATE_REPO` | `propietario/nombre-repo-privado` |
-| `STATE_REPO_TOKEN` | Fine-grained PAT descrito arriba |
+| `STATE_DEPLOY_KEY` | Clave privada SSH de la deploy key del repo de estado |
 | `CONFIG_TOML` | Configuración TOML completa; incluya `publish_public_enabled = false` y los parámetros habituales de producción |
 | `CLIENT_SECRET_JSON` | Contenido íntegro del OAuth `client_secret.json` de YouTube |
 | `TOKEN_JSON` | Contenido íntegro del `token.json` autorizado para el canal |

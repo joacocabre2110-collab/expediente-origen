@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.STATE_REPO }}
-          token: ${{ secrets.STATE_REPO_TOKEN }}
+          ssh-key: ${{ secrets.STATE_DEPLOY_KEY }}
           path: estado
           persist-credentials: true
       - name: Preparar Python
@@ -99,8 +99,6 @@ jobs:
           PY
       - name: Guardar estado privado y limpiar temporales
         if: always()
-        env:
-          STATE_REPO_TOKEN: ${{ secrets.STATE_REPO_TOKEN }}
         run: |
           set -e
           git -C estado config user.name "github-actions[bot]"
