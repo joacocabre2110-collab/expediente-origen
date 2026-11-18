@@ -21,6 +21,10 @@ class CuotaAgotada(ErrorGemini):
     """Todos los modelos configurados están fuera de cuota hasta el reinicio."""
 
 
+class ServicioGeminiNoDisponible(ErrorGemini):
+    """Todos los modelos están temporalmente degradados o fuera de servicio."""
+
+
 class ClienteGemini:
     def __init__(self, clave_path: str | Path, modelos: Mapping[str, str],
                  pausa_min_s: float = 7, reintentos: int = 5,
@@ -63,9 +67,13 @@ class ClienteGemini:
             body["generationConfig"]["responseMimeType"] = "application/json"
         data = json_lib.dumps(body).encode("utf-8")
         estado = self._leer_estado()
-        disponibles = [m for m in modelos if not self._agotado(estado, m) and not self._no_disponible(estado, m)]
+        disponibles = [m for m in modelos if not self._agotado(estado, m) and not self._no_disponible(estado, m) and not self._degradado(estado, m)]
         if not disponibles:
-            raise CuotaAgotada(f"Cuota de Gemini agotada para {modelo_rol}; reinicio estimado {self._reinicio().isoformat()}")
+            if any(self._agotado(estado, m) for m in modelos):
+                hasta = min((self._fecha_estado(estado, "agotados", m) for m in modelos if self._agotado(estado, m)), default=self._reinicio())
+                raise CuotaAgotada(f"Cuota de Gemini agotada para {modelo_rol}; reinicio estimado {hasta.isoformat()}")
+            reintento = min((self._fecha_estado(estado, grupo, m) for grupo in ("no_disponibles", "degradados") for m in modelos if self._fecha_estado(estado, grupo, m)), default=self.reloj_fecha() + timedelta(minutes=10))
+            raise ServicioGeminiNoDisponible(f"Servicio de Gemini no disponible para {modelo_rol}; reintento estimado {reintento.isoformat()}")
         ultimo_error = None
         for modelo in disponibles:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
@@ -109,7 +117,15 @@ class ClienteGemini:
                         ultimo_error = ErrorGemini(f"Modelo Gemini no disponible ({codigo})")
                         cambiar_modelo = True
                         break
-                    if codigo not in (429, 503) or intento >= self.reintentos:
+                    if codigo in (500, 502, 503, 504):
+                        if intento < min(self.reintentos, 2):
+                            self.sleep(2 ** intento + self.jitter(1.0))
+                            continue
+                        self._marcar_degradado(estado, modelo)
+                        ultimo_error = ErrorGemini(f"Servicio de Gemini temporalmente degradado ({codigo})")
+                        cambiar_modelo = True
+                        break
+                    if codigo != 429 or intento >= self.reintentos:
                         raise ErrorGemini(f"Error HTTP de Gemini ({codigo})") from None
                     self.sleep(2 ** intento + self.jitter(1.0))
                 except (TimeoutError, urllib.error.URLError) as exc:
@@ -125,8 +141,10 @@ class ClienteGemini:
             if not cambiar_modelo:
                 raise ultimo_error or ErrorGemini("Gemini agotó los reintentos")
         final = self._leer_estado()
-        if all(self._agotado(final, m) or self._no_disponible(final, m) for m in modelos) and any(self._agotado(final, m) for m in modelos):
-            raise CuotaAgotada(f"Sin modelos disponibles para {modelo_rol}; reinicio estimado {self._reinicio().isoformat()}")
+        if all(self._agotado(final, m) or self._no_disponible(final, m) or self._degradado(final, m) for m in modelos):
+            if any(self._agotado(final, m) for m in modelos):
+                raise CuotaAgotada(f"Sin modelos disponibles para {modelo_rol}; reinicio estimado {self._reinicio().isoformat()}")
+            raise ServicioGeminiNoDisponible(f"Servicio de Gemini no disponible para {modelo_rol}; reintento estimado {self._proximo_reintento(final, modelos).isoformat()}")
         raise ultimo_error or ErrorGemini("Gemini agotó los reintentos")
 
     def _reinicio(self) -> datetime:
@@ -134,9 +152,17 @@ class ClienteGemini:
         return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     def _leer_estado(self) -> dict:
-        if not self.ruta_estado: return {"agotados": {}, "requests": {}}
+        if not self.ruta_estado: return {"agotados": {}, "no_disponibles": {}, "degradados": {}, "requests": {}}
         try: return json_lib.loads(self.ruta_estado.read_text(encoding="utf-8"))
-        except (OSError, ValueError): return {"agotados": {}, "requests": {}}
+        except (OSError, ValueError): return {"agotados": {}, "no_disponibles": {}, "degradados": {}, "requests": {}}
+
+    def _fecha_estado(self, estado: dict, grupo: str, modelo: str) -> datetime | None:
+        hasta = estado.get(grupo, {}).get(modelo)
+        return datetime.fromisoformat(hasta) if hasta else None
+
+    def _proximo_reintento(self, estado: dict, modelos: list[str]) -> datetime:
+        fechas = [self._fecha_estado(estado, grupo, modelo) for grupo in ("agotados", "no_disponibles", "degradados") for modelo in modelos]
+        return min((f for f in fechas if f is not None), default=self.reloj_fecha() + timedelta(minutes=10))
 
     def _guardar_estado(self, estado: dict) -> None:
         if self.ruta_estado:
@@ -163,6 +189,17 @@ class ClienteGemini:
 
     def _marcar_no_disponible(self, estado: dict, modelo: str) -> None:
         estado.setdefault("no_disponibles", {})[modelo] = self._reinicio().isoformat()
+        self._guardar_estado(estado)
+
+    def _degradado(self, estado: dict, modelo: str) -> bool:
+        hasta = estado.get("degradados", {}).get(modelo)
+        if not hasta: return False
+        if self.reloj_fecha() < datetime.fromisoformat(hasta): return True
+        estado["degradados"].pop(modelo, None); self._guardar_estado(estado)
+        return False
+
+    def _marcar_degradado(self, estado: dict, modelo: str) -> None:
+        estado.setdefault("degradados", {})[modelo] = (self.reloj_fecha() + timedelta(minutes=10)).isoformat()
         self._guardar_estado(estado)
 
     def _contar(self, estado: dict, modelo: str) -> None:

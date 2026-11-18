@@ -5,7 +5,7 @@ import pytest
 
 from datetime import datetime
 
-from canal.llm.gemini import ClienteGemini, CuotaAgotada, ErrorGemini
+from canal.llm.gemini import ClienteGemini, CuotaAgotada, ErrorGemini, ServicioGeminiNoDisponible
 from canal.llm.generadores import VerificadorLLM
 from canal.pipeline.etapas import ContextoVideo, Guion, Tema
 from canal.investigacion.brief import Brief, Fragmento
@@ -101,6 +101,34 @@ def test_expired_model_state_resets_and_minute_429_retries(tmp_path):
     assert waits == [1]
     assert len(calls) == 2
     assert "m" not in json.loads(state.read_text())["agotados"]
+
+
+def test_503_falls_back_and_marks_model_degraded(tmp_path):
+    key = tmp_path / "key"; key.write_text("k")
+    state = tmp_path / "gemini_uso.json"
+    ahora = datetime.fromisoformat("2026-11-13T10:00:00+00:00")
+    calls, waits = [], []
+    def open_(req, timeout):
+        calls.append(req.full_url)
+        if "/models/m1:" in req.full_url:
+            raise urllib.error.HTTPError(req.full_url, 503, "down", {}, None)
+        return Response({"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+    c = ClienteGemini(key, {"guion": ["m1", "m2"]}, pausa_min_s=0, reintentos=2,
+                      abrir=open_, sleep=waits.append, jitter=lambda _: 0,
+                      ruta_estado=state, reloj_fecha=lambda: ahora)
+    assert c.generar("guion", "x") == "ok"
+    assert len(calls) == 4 and calls[-1].split("/models/")[1].startswith("m2:")
+    assert json.loads(state.read_text())["degradados"]["m1"] == "2026-11-13T10:10:00+00:00"
+
+
+def test_all_models_degraded_raise_transient_with_retry_time(tmp_path):
+    key = tmp_path / "key"; key.write_text("k")
+    state = tmp_path / "gemini_uso.json"
+    state.write_text(json.dumps({"degradados": {"m1": "2026-11-13T10:10:00+00:00", "m2": "2026-11-13T10:12:00+00:00"}}))
+    c = ClienteGemini(key, {"guion": ["m1", "m2"]}, ruta_estado=state,
+                      reloj_fecha=lambda: datetime.fromisoformat("2026-11-13T10:00:00+00:00"))
+    with pytest.raises(ServicioGeminiNoDisponible, match="2026-11-13T10:10:00"):
+        c.generar("guion", "x")
 
 
 class FakeClient:

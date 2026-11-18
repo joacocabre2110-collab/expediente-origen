@@ -286,6 +286,26 @@ class Orquestador:
             self.cola.completar(tarea.id)
             return ResultadoPaso("ok", tarea.video_key, tarea.etapa)
         except Exception as exc:
+            from canal.llm.gemini import CuotaAgotada, ServicioGeminiNoDisponible
+            if isinstance(exc, (ServicioGeminiNoDisponible, CuotaAgotada)):
+                ahora = float(self.cola.reloj())
+                inicio = float(s.get("gemini_reintento_inicio", ahora))
+                transcurrido = max(0.0, ahora - inicio)
+                if transcurrido >= 6 * 3600:
+                    final = self.cola.fallo_definitivo(tarea.id, str(exc))
+                    if final.estado == "fallido":
+                        self._alerta("Fallo definitivo de producción", str(exc), tarea.video_key)
+                        return ResultadoPaso("fallido", tarea.video_key, tarea.etapa, str(exc))
+                else:
+                    pausas = (300, 600, 1200, 1800)
+                    numero = int(s.get("gemini_reintentos_diferidos", 0))
+                    demora = min(pausas[min(numero, len(pausas) - 1)], max(1, 6 * 3600 - transcurrido))
+                    s["gemini_reintento_inicio"] = inicio
+                    s["gemini_reintentos_diferidos"] = numero + 1
+                    self._guardar(tarea.video_key, s)
+                    motivo = f"{exc}; reintento diferido en {int(demora // 60)} min"
+                    self.cola.reintentar_programado(tarea.id, motivo, demora)
+                    return ResultadoPaso("reintento", tarea.video_key, tarea.etapa, motivo)
             final = self.cola.fallar(tarea.id, str(exc))
             if final.estado == "fallido":
                 self._alerta("Fallo definitivo de producción", str(exc), tarea.video_key)

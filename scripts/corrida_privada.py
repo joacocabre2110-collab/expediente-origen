@@ -24,6 +24,7 @@ def main() -> int:
     ap.add_argument("--max-costo-usd", type=float, default=None)
     ap.add_argument("--reanudar", default=None, help="video_key de una corrida previa a reanudar (no repite lo ya hecho)")
     ap.add_argument("--datos", default=None, help="directorio de datos (por defecto datos_corrida/<modo>)")
+    ap.add_argument("--espera-max-min", type=float, default=30, help="máximo que espera reintentos diferidos antes de dejar la tarea reprogramada")
     a = ap.parse_args()
     tope = a.max_costo_usd if a.max_costo_usd is not None else (0.25 if a.tipo == "short" else 1.0)
     modo = "dry-run" if a.dry_run else "real"
@@ -43,17 +44,23 @@ def main() -> int:
         for etapa in ETAPAS_PRODUCCION:
             e.cola.encolar(key, etapa)
     print(f"Corrida {modo} | {key} | tope de costo {tope} USD | publicación pública: BLOQUEADA")
-    vacias = 0
-    for _ in range(len(ETAPAS_PRODUCCION) * 4):
+    limite_espera = time.monotonic() + max(0, a.espera_max_min) * 60
+    max_ciclos = len(ETAPAS_PRODUCCION) * 4 + int(max(0, a.espera_max_min) * 60 / 2) + 10
+    for _ in range(max_ciclos):
         t0 = time.time()
         r = orq.ejecutar_siguiente()
         if r.estado == "sin_tareas":
-            vacias += 1
-            if vacias > 4:
+            ahora = time.time()
+            with e.cola._connect() as db:
+                proxima = db.execute("SELECT MIN(proxima_ejecucion) FROM tareas WHERE video_key=? AND estado='pendiente'", (key,)).fetchone()[0]
+            demora = min(3.0, max(0.0, float(proxima) - ahora)) if proxima is not None else 3.0
+            if demora == 0:
+                demora = 3.0
+            restante = limite_espera - time.monotonic()
+            if restante <= 0:
                 break
-            time.sleep(3)  # una tarea en reintento puede estar en espera de backoff
+            time.sleep(min(demora, restante))
             continue
-        vacias = 0
         gasto = e.ledger.costo_por_video(key)
         print(f"  {r.etapa or '-':18} {r.estado:12} {time.time()-t0:6.1f}s  costo acumulado {gasto:.4f} USD" + (f"  | {r.detalle}" if r.detalle else ""))
         if gasto > tope:

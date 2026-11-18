@@ -10,6 +10,7 @@ from canal.pipeline.falsos import (ControlCalidadFalso, GeneradorGuionFalso,
     VerificadorFalso)
 from canal.queue import QueueStore
 from canal.youtube import ClienteFalso, ClienteSeguro, EstadoVideo
+from canal.llm.gemini import ServicioGeminiNoDisponible
 
 
 class Reloj:
@@ -171,3 +172,20 @@ def test_verificacion_post_processing_uses_long_backoff_without_consuming_attemp
     orch.ejecutar_siguiente()
     row = q._connect().execute("select intentos,proxima_ejecucion from tareas where video_key='v' and etapa='verificacion_post'").fetchone()
     assert row["intentos"] == 0 and row["proxima_ejecucion"] == 1420
+
+
+def test_gemini_unavailable_schedules_retry_without_consuming_attempt(tmp_path):
+    now = [1000.0]
+    q, _, notifier, orch = setup(tmp_path)
+    q.reloj = lambda: now[0]
+    class GeneradorCaido:
+        def generar(self, ctx):
+            raise ServicioGeminiNoDisponible("reintento estimado pronto")
+    orch.etapas.tema = GeneradorCaido()
+    q.encolar("v", "tema")
+    result = orch.ejecutar_siguiente()
+    assert result.estado == "reintento" and "5 min" in result.detalle
+    with q._connect() as db:
+        row = db.execute("select estado,intentos,proxima_ejecucion from tareas where video_key='v' and etapa='tema'").fetchone()
+    assert tuple(row) == ("pendiente", 0, 1300.0)
+    assert not notifier.bandeja
