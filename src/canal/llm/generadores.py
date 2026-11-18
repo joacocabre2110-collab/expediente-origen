@@ -140,6 +140,10 @@ class VerificadorLLM:
         prompt = _plantilla("verificacion.txt").format(tema=json.dumps(tema.__dict__, ensure_ascii=False), guion=guion.texto, fragmentos=fuentes, afirmaciones=json.dumps(guion.afirmaciones or [], ensure_ascii=False))
         def validar(o):
             _obj(o, {"afirmaciones", "dudosas", "motivos"})
+            # Tolerancia: se recorta lo que el modelo deje demasiado largo en vez de rechazar la respuesta.
+            for clave, cuantos, largo in (("afirmaciones", 80, 500), ("dudosas", 80, 500), ("motivos", 20, 300)):
+                if isinstance(o.get(clave), list):
+                    o[clave] = [x.strip()[:largo] for x in o[clave] if isinstance(x, str) and x.strip()][:cuantos]
             _lista(o, "afirmaciones", 0, 80, 500); _lista(o, "dudosas", 0, 80, 500); _lista(o, "motivos", 0, 20, 300)
         o = _json(self.cliente, "verificacion", prompt, _sistema(), validar)
         dudas = _lista(o, "dudosas", 0, 80, 500)
