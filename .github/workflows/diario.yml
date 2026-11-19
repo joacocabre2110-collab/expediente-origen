@@ -11,6 +11,11 @@ on:
         type: boolean
         required: false
         default: true
+      probar_alerta:
+        description: "Solo envía un correo de prueba de alerta"
+        type: boolean
+        required: false
+        default: false
       prueba_short:
         description: "Un solo Short real y privado (tope 0,25 USD), sin ciclo diario"
         type: boolean
@@ -74,6 +79,7 @@ jobs:
               raise SystemExit('CONFIG_TOML debe declarar publish_public_enabled = false')
           PY
       - name: Ejecutar ciclo privado
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.probar_alerta) }}
         env:
           CANAL_ASSETS_DIR: ${{ github.workspace }}/estado/assets/original/canal_youtube
           CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && !inputs.prueba_short && 'dry-run' || 'real' }}
@@ -88,7 +94,7 @@ jobs:
             python scripts/diario.py
           fi
       - name: Alerta por correo si falla
-        if: failure()
+        if: failure() || (github.event_name == 'workflow_dispatch' && inputs.probar_alerta)
         env:
           ALERT_TO: ${{ secrets.ALERT_EMAIL }}
           CANAL_DATOS_DIR: ${{ github.workspace }}/estado/datos_corrida/real
@@ -99,7 +105,7 @@ jobs:
           from canal.alerts.notifier import CanalArchivo
           try:
               CanalSMTP('secrets/smtp.ini', password_file='secrets/smtp_password.txt', fallback=CanalArchivo(os.path.join(os.environ['CANAL_DATOS_DIR'], 'alerts')), retries=1).enviar(
-                  os.environ['ALERT_TO'], 'Falló el ciclo diario del canal',
+                  os.environ['ALERT_TO'], 'Falló el ciclo diario del canal (o prueba de alerta)',
                   f"Falló el workflow {os.environ.get('GITHUB_SERVER_URL')}/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}"
               )
           except Exception as exc:
