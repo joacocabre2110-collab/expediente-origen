@@ -1,9 +1,9 @@
 name: Ciclo diario del canal
 
 on:
-  # Horario automático desactivado hasta que el usuario autorice la operación diaria:
-  # schedule:
-  #   - cron: '17 */2 * * *'
+  # Período de prueba PRIVADO autorizado (publish_public_enabled=false en CONFIG_TOML):
+  schedule:
+    - cron: '17 */2 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
